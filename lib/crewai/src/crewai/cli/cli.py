@@ -392,10 +392,15 @@ def deploy() -> None:
 
 @deploy.command(name="create")
 @click.option("-y", "--yes", is_flag=True, help="Skip the confirmation prompt")
-def deploy_create(yes: bool) -> None:
+@click.option(
+    "--skip-validate",
+    is_flag=True,
+    help="Skip the pre-deploy validation checks.",
+)
+def deploy_create(yes: bool, skip_validate: bool) -> None:
     """Create a Crew deployment."""
     deploy_cmd = DeployCommand()
-    deploy_cmd.create_crew(yes)
+    deploy_cmd.create_crew(yes, skip_validate=skip_validate)
 
 
 @deploy.command(name="list")
@@ -407,10 +412,28 @@ def deploy_list() -> None:
 
 @deploy.command(name="push")
 @click.option("-u", "--uuid", type=str, help="Crew UUID parameter")
-def deploy_push(uuid: str | None) -> None:
+@click.option(
+    "--skip-validate",
+    is_flag=True,
+    help="Skip the pre-deploy validation checks.",
+)
+def deploy_push(uuid: str | None, skip_validate: bool) -> None:
     """Deploy the Crew."""
     deploy_cmd = DeployCommand()
-    deploy_cmd.deploy(uuid=uuid)
+    deploy_cmd.deploy(uuid=uuid, skip_validate=skip_validate)
+
+
+@deploy.command(name="validate")
+def deploy_validate() -> None:
+    """Validate the current project against common deployment failures.
+
+    Runs the same pre-deploy checks that `crewai deploy create` and
+    `crewai deploy push` run automatically, without contacting the platform.
+    Exits non-zero if any blocking issues are found.
+    """
+    from crewai.cli.deploy.validate import run_validate_command
+
+    run_validate_command()
 
 
 @deploy.command(name="status")
@@ -609,7 +632,6 @@ def env() -> None:
 @env.command("view")
 def env_view() -> None:
     """View tracing-related environment variables."""
-    import os
     from pathlib import Path
 
     from rich.console import Console
@@ -738,7 +760,6 @@ def traces_disable() -> None:
 @traces.command("status")
 def traces_status() -> None:
     """Show current trace collection status."""
-    import os
 
     from rich.console import Console
     from rich.panel import Panel
@@ -786,6 +807,42 @@ def traces_status() -> None:
         padding=(1, 2),
     )
     console.print(panel)
+
+
+@crewai.group(invoke_without_command=True)
+@click.option(
+    "--location", default="./.checkpoints", help="Checkpoint directory or SQLite file."
+)
+@click.pass_context
+def checkpoint(ctx: click.Context, location: str) -> None:
+    """Browse and inspect checkpoints. Launches a TUI when called without a subcommand."""
+    from crewai.cli.checkpoint_cli import _detect_location
+
+    location = _detect_location(location)
+    ctx.ensure_object(dict)
+    ctx.obj["location"] = location
+    if ctx.invoked_subcommand is None:
+        from crewai.cli.checkpoint_tui import run_checkpoint_tui
+
+        run_checkpoint_tui(location)
+
+
+@checkpoint.command("list")
+@click.argument("location", default="./.checkpoints")
+def checkpoint_list(location: str) -> None:
+    """List checkpoints in a directory."""
+    from crewai.cli.checkpoint_cli import _detect_location, list_checkpoints
+
+    list_checkpoints(_detect_location(location))
+
+
+@checkpoint.command("info")
+@click.argument("path", default="./.checkpoints")
+def checkpoint_info(path: str) -> None:
+    """Show details of a checkpoint. Pass a file or directory for latest."""
+    from crewai.cli.checkpoint_cli import _detect_location, info_checkpoint
+
+    info_checkpoint(_detect_location(path))
 
 
 if __name__ == "__main__":
